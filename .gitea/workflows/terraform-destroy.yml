@@ -1,0 +1,30 @@
+name: "Terraform Destroy"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment (dev/prod) — must match folder terraform/env/<env>"
+        required: true
+        type: string
+      vm_name:
+        description: "VM name (e.g. dev01) — must match <vm_name>.tfvars"
+        required: true
+        type: string
+      confirm_destroy:
+        description: "Type 'yes' to confirm destroy"
+        required: true
+        type: string
+
+jobs:
+  destroy:
+    uses: Infra/reusable-workflows-vault/.gitea/workflows/reusable-terraform-destroy.yml@main
+    with:
+      environment:        ${{ github.event.inputs.environment }}
+      vm_name:            ${{ github.event.inputs.vm_name }}
+      confirm_destroy:    ${{ github.event.inputs.confirm_destroy }}
+      vault_path_lxd:     "homelab/data/lxd"
+      vault_path_minio:   "homelab/data/minio"
+      vault_path_ansible: "homelab/data/ansible"
+    secrets: inherit
+    
