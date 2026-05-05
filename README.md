@@ -19,7 +19,7 @@ Deploy Ubuntu 24.04 virtual machines on LXD via Terraform (module-based), config
 - [Local Usage](#local-usage)
 - [Destroying a VM](#destroying-a-vm)
 - [Design Notes](#design-notes)
-- [Created and Maintained by](#-infrastructure-created-and-maintained-by)
+- [Created and Maintained By](#infrastructure-created-and-maintained-by)
 
 ---
 
@@ -29,9 +29,23 @@ This repository implements a complete infrastructure-as-code solution that:
 
 - Provisions Ubuntu 24.04 VMs on LXD using Terraform with a reusable `lxd-vm` module
 - Configures VMs with cloud-init for automated setup
-- Deploys applications via Ansible playbooks and local roles
+- Deploys applications via Ansible playbooks — supporting both **local roles** and **self-hosted Ansible Galaxy roles**
 - Manages environments (dev/prod) with separate state management per VM in MinIO
-- Provides CI/CD automation through local Gitea Actions workflows
+- Provides CI/CD automation through Gitea Actions workflows, calling **shared reusable workflows**
+
+**Two secret management strategies are supported:**
+
+| Strategy | Repo | When to use |
+|---|---|---|
+| ✅ **Default** — OpenBao (Vault) | `Infra/reusable-workflows-vault` | Production-grade, dynamic short-lived secrets |
+| 🔁 **Alternate** — Repo-level secrets | `Infra/reusable-workflows` | Simpler setup, static secrets in Gitea org |
+
+**Two Terraform module strategies are supported:**
+
+| Strategy | Source | When to use |
+|---|---|---|
+| ✅ **Default** — Reusable module | `Infra/reusable-modules` on Gitea | Shared, version-controlled, consistent across repos |
+| 🔧 **Local** — In-repo module | `terraform/modules/lxd-vm/` | When you need to customise the module for this repo |
 
 ---
 
@@ -45,6 +59,8 @@ This repository implements a complete infrastructure-as-code solution that:
 | MinIO | S3-compatible state backend at `http://10.248.42.22:9000` |
 | Terraform ≥ 1.5 | Installed on the runner |
 | LXD TLS certificates | Client cert/key for runner-to-LXD authentication |
+| **OpenBao** *(default)* | Vault-compatible secrets manager — org secrets `VAULT_ADDR`, `VAULT_ROLE_ID`, `VAULT_SECRET_ID` configured |
+| **Gitea org secrets** *(alternate)* | `LXD_ADDRESS`, `LXD_CLIENT_CERT/KEY`, `MINIO_*`, `ANSIBLE_SSH_*` set at org level |
 
 ---
 
@@ -67,7 +83,7 @@ This repository implements a complete infrastructure-as-code solution that:
 
 6. **Run Terraform Apply** via Gitea Actions — go to Actions → `Terraform Apply`, select `main` branch, enter environment and VM name; the VM is created on LXD
 
-7. **Run Ansible Deploy** via Gitea Actions — go to Actions → `Ansible Deploy`, select `main` branch, enter environment and VM name; Ansible roles are applied to the live VM
+7. **Run Ansible Deploy** via Gitea Actions — go to Actions → `Ansible Deploy`, select `main` branch, enter environment and VM name; Ansible roles (local + Galaxy) are applied to the live VM
 
 8. **Run Terraform Destroy** (when done) via Gitea Actions — go to Actions → `Terraform Destroy`, select `main` branch, enter environment, VM name, and type `yes` to confirm
 
@@ -76,35 +92,41 @@ This repository implements a complete infrastructure-as-code solution that:
 ## Architecture Overview
 
 ```
-                ┌─────────────────────────────────────────┐
-                │           Gitea (gitea.local)            │
-                │   local-workflows-ansible-roles-modules  │
-                └───────────┬─────────────────────────────┘
+                ┌─────────────────────────────────────────────┐
+                │           Gitea (gitea.local)                │
+                │   local-workflows-ansible-roles-modules      │
+                └───────────┬─────────────────────────────────┘
                             │ Gitea Actions triggers
                             ▼
                 ┌─────────────────────────┐
                 │     Gitea Act Runner    │  (Docker-based, inside LXD VM)
-                └───────┬─────────┬───────┘
-                        │         │
-               Terraform│         │Ansible
-                        ▼         ▼
-          ┌─────────────────┐  ┌─────────────────┐
-          │   LXD / KVM     │  │   Target VM     │
-          │  (localhost:    │  │  (Ubuntu 24.04) │
-          │    8443)        │  │  ansible user   │
-          └─────────────────┘  └─────────────────┘
-                  │
-          ┌───────────────┐
-          │     MinIO     │  (Terraform state backend)
-          │ 10.248.42.22  │
-          └───────────────┘
+                └───┬─────────┬───────────┘
+                    │         │
+                    │ calls   │ calls
+                    ▼         ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │                  Shared Gitea Repos (Infra org)          │
+  │                                                          │
+  │  reusable-workflows-vault   ← Default  (OpenBao secrets) │
+  │  reusable-workflows         ← Alternate (org secrets)    │
+  │  reusable-modules           ← Terraform lxd-vm module    │
+  │  reusable-ansible-galaxy-*  ← Ansible Galaxy roles       │
+  └──────────────────────────────────────────────────────────┘
+                    │         │
+           Terraform│         │Ansible
+                    ▼         ▼
+      ┌─────────────────┐  ┌─────────────────┐
+      │   LXD / KVM     │  │   Target VM     │
+      │  (localhost:    │  │  (Ubuntu 24.04) │
+      │    8443)        │  │  ansible user   │
+      └─────────────────┘  └─────────────────┘
+              │
+      ┌───────────────┐    ┌───────────────┐
+      │     MinIO     │    │   OpenBao     │
+      │ 10.248.42.22  │    │  (secrets)    │
+      │ (TF state)    │    │               │
+      └───────────────┘    └───────────────┘
 ```
-
-**This repo uses a module-based Terraform layout:**
-- Each environment (`dev`, `prod`) has its own root module under `terraform/env/<env>/` that calls the shared `lxd-vm` module
-- The `lxd-vm` module encapsulates all LXD resource definitions and cloud-init rendering
-- Gitea Actions workflows are defined locally in `.gitea/workflows/` — not shared/reusable
-- Ansible uses local roles — no Ansible Galaxy or centralised role server
 
 ---
 
@@ -114,43 +136,44 @@ This repository implements a complete infrastructure-as-code solution that:
 .
 ├── .gitea/
 │   └── workflows/
-│       ├── terraform-check.yml     # fmt + validate + tflint (PR trigger)
-│       ├── terraform-plan.yml      # plan only (manual trigger)
-│       ├── terraform-apply.yml     # apply (manual trigger)
-│       ├── terraform-destroy.yml   # destroy with confirmation gate (manual trigger)
-│       ├── ansible-check.yml       # lint + syntax check (PR trigger)
-│       └── ansible-deploy.yml      # run playbook against VM (manual trigger)
+│       ├── terraform-check.yml         # fmt + validate + tflint (PR trigger)
+│       ├── terraform-plan.yml          # plan only (manual trigger)
+│       ├── terraform-apply.yml         # apply (manual trigger)
+│       ├── terraform-destroy.yml       # destroy with confirmation gate (manual trigger)
+│       ├── ansible-check.yml           # lint + syntax check (PR trigger)
+│       └── ansible-deploy.yml          # run playbook against VM (manual trigger)
 ├── terraform/
 │   ├── env/
 │   │   ├── dev/
-│   │   │   ├── backend.tf          # S3 (MinIO) backend — empty config, filled at init
-│   │   │   ├── providers.tf        # LXD provider + Terraform version constraints
-│   │   │   ├── main.tf             # Calls the lxd-vm module
-│   │   │   ├── variables.tf        # All input variables for this environment
-│   │   │   ├── outputs.tf          # VM name, IP, MAC, SSH command
-│   │   │   └── dev01.tfvars        # Per-VM resource config (committed, no secrets)
+│   │   │   ├── backend.tf              # S3 (MinIO) backend — empty config, filled at init
+│   │   │   ├── providers.tf            # LXD provider + Terraform version constraints
+│   │   │   ├── main.tf                 # Calls reusable-modules (default) or local module
+│   │   │   ├── variables.tf            # All input variables for this environment
+│   │   │   ├── outputs.tf              # VM name, IP, MAC, SSH command
+│   │   │   └── dev01.tfvars            # Per-VM resource config (committed, no secrets)
 │   │   └── prod/
 │   │       ├── backend.tf
 │   │       ├── providers.tf
-│   │       ├── main.tf             # Calls the lxd-vm module
+│   │       ├── main.tf                 # Uses local module path (for customisation)
 │   │       ├── variables.tf
 │   │       ├── outputs.tf
 │   │       └── prod01.tfvars
 │   └── modules/
-│       └── lxd-vm/
-│           ├── main.tf             # lxd_instance resource + locals (instance name, cloud-init)
-│           ├── variables.tf        # Module input variables
-│           ├── outputs.tf          # vm_name, vm_ip, vm_mac_address, ansible_ssh_command
+│       └── lxd-vm/                     # Local module — use when customising from reusable-modules
+│           ├── main.tf
+│           ├── variables.tf
+│           ├── outputs.tf
 │           └── cloud-init/
-│               └── user-data.yaml  # cloud-init template (ansible user, SSH hardening)
+│               └── user-data.yaml
 ├── ansible/
-│   ├── inventory.yml               # Dynamic inventory via VM_IP env var
-│   ├── playbook.yml                # Entry playbook: common + docker roles
-│   └── roles/
+│   ├── inventory.yml                   # Dynamic inventory via VM_IP env var
+│   ├── playbook.yml                    # Entry playbook: local roles + Galaxy roles
+│   ├── requirements.yml                # Galaxy roles sourced from self-hosted Gitea
+│   └── roles/                          # Local roles (not managed by Galaxy)
 │       ├── common/
-│       │   └── tasks/main.yml      # apt cache + base packages
+│       │   └── tasks/main.yml          # apt cache + base packages
 │       └── docker/
-│           └── tasks/main.yml      # Docker CE install from upstream repo
+│           └── tasks/main.yml          # Docker CE install from upstream repo
 └── .gitignore
 ```
 
@@ -158,7 +181,29 @@ This repository implements a complete infrastructure-as-code solution that:
 
 ## Secrets & Variables
 
-Configure all secrets at the **Gitea org level**: `Infra` → Settings → Secrets and Variables.
+This repo supports two secret management strategies. The caller workflows in `.gitea/workflows/` are pre-configured for the **default** (OpenBao/Vault) approach.
+
+### Strategy 1 — OpenBao Vault ✅ Default
+
+Workflows call `Infra/reusable-workflows-vault` and exchange AppRole credentials for short-lived tokens at runtime. Only three secrets need to be set at the Gitea org level:
+
+| Name | Type | Description |
+|---|---|---|
+| `VAULT_ADDR` | Secret | OpenBao server address (e.g. `http://10.x.x.x:8200`) |
+| `VAULT_ROLE_ID` | Secret | AppRole Role ID for CI login |
+| `VAULT_SECRET_ID` | Secret | AppRole Secret ID for CI login |
+
+All other credentials (LXD certs, MinIO keys, SSH keys) are stored **inside OpenBao** at the following KV v2 paths, and fetched at runtime by the reusable workflow:
+
+| Path | Keys stored |
+|---|---|
+| `homelab/data/lxd` | `address`, `client_cert`, `client_key`, `trust_password` |
+| `homelab/data/minio` | `endpoint`, `access_key`, `secret_key` |
+| `homelab/data/ansible` | `ssh_public_key`, `ssh_private_key` |
+
+### Strategy 2 — Repo-level Secrets 🔁 Alternate
+
+Workflows call `Infra/reusable-workflows` and read secrets directly from Gitea. All secrets must be configured at the **Gitea org level**: `Infra` → Settings → Secrets and Variables.
 
 | Name | Type | Used By | Description |
 |---|---|---|---|
@@ -171,9 +216,20 @@ Configure all secrets at the **Gitea org level**: `Infra` → Settings → Secre
 | `ANSIBLE_SSH_PUBLIC_KEY` | Secret | Terraform | Injected into VM via cloud-init |
 | `ANSIBLE_SSH_PRIVATE_KEY` | Secret | Ansible | Used by runner to SSH into VM |
 
+To switch to this strategy, update the `uses:` line in each caller workflow:
+```yaml
+# Default (OpenBao)
+uses: Infra/reusable-workflows-vault/.gitea/workflows/reusable-terraform-plan.yml@main
+
+# Alternate (repo secrets)
+uses: Infra/reusable-workflows/.gitea/workflows/reusable-terraform-plan.yml@main
+```
+
 ---
 
 ## Workflows
+
+All caller workflows live in `.gitea/workflows/` and delegate to one of the two reusable workflow repos. The `with:` inputs and `vault_path_*` parameters are the same regardless of which strategy is used.
 
 ### `terraform-check.yml` — Terraform Lint & Validate
 **Trigger:** Pull Request or `workflow_dispatch`
@@ -199,19 +255,19 @@ Inputs:
 
 Steps:
 1. Validates environment input (only `dev` / `prod` allowed)
-2. Resolves `tfvars_file` and `state_key` paths from inputs
-3. Writes LXD TLS certs to `~/.config/lxc/`
-4. `terraform init` against MinIO backend, working in `terraform/env/<env>/`
-5. `terraform plan` with the resolved `.tfvars` file
+2. Fetches secrets from OpenBao *(default)* or reads from Gitea org secrets *(alternate)*
+3. Resolves `tfvars_file` and `state_key` paths from inputs
+4. Writes LXD TLS certs to `~/.config/lxc/`
+5. `terraform init` against MinIO backend, working in `terraform/env/<env>/`
+6. `terraform validate`
+7. `terraform plan` with the resolved `.tfvars` file
 
 ---
 
 ### `terraform-apply.yml` — Terraform Apply
 **Trigger:** `workflow_dispatch`
 
-Same inputs as Plan. Runs `terraform apply -auto-approve` after init. The workflow is scoped to a Gitea **environment** (matching the `environment` input), allowing environment-level protection rules and secret overrides.
-
-VM name is constructed inside the `lxd-vm` module as: `<environment>-<os_type>-<vm_name>` (e.g. `prod-ubuntu-vm-prod02`).
+Same inputs as Plan. Runs `terraform apply -auto-approve` after init. VM name is constructed inside the `lxd-vm` module as: `<environment>-<os_type>-<vm_name>` (e.g. `prod-ubuntu-vm-prod02`).
 
 ---
 
@@ -225,16 +281,17 @@ Inputs:
 | `vm_name` | VM to destroy |
 | `confirm_destroy` | Must type `yes` — hard gate before destroy runs |
 
-Includes a safety check step that prints the target VM and state path before proceeding.
+Includes a safety check step that validates the confirmation before proceeding.
 
 ---
 
 ### `ansible-check.yml` — Ansible Lint & Syntax Check
 **Trigger:** Pull Request or `workflow_dispatch`
 
-1. Installs Ansible and `ansible-lint` via `pipx`
-2. Runs `ansible-lint ansible/playbook.yml`
-3. Runs `ansible-playbook --syntax-check`
+1. Installs Ansible and `ansible-lint`
+2. Installs Galaxy roles from `ansible/requirements.yml` (if present)
+3. Runs `ansible-lint ansible/playbook.yml`
+4. Runs `ansible-playbook --syntax-check`
 
 > No live VM required. Safe static analysis only.
 
@@ -251,22 +308,27 @@ Inputs:
 
 Steps:
 1. Validates environment
-2. Inits Terraform against MinIO to read existing state from `terraform/env/<env>/`
-3. Reads VM IP from `terraform output -raw vm_ip`
-4. Polls SSH port (up to 20 × 10s) until the VM is reachable
-5. Writes `ANSIBLE_SSH_PRIVATE_KEY` to `~/.ssh/id_rsa`
-6. Generates an inline `inventory.ini` targeting the VM
-7. Runs `ansible/playbook.yml` with `ANSIBLE_HOST_KEY_CHECKING=False`
+2. Fetches secrets from OpenBao *(default)* or org secrets *(alternate)*
+3. Inits Terraform against MinIO to read existing state
+4. Reads VM IP from `terraform output -raw vm_ip`
+5. Installs Galaxy roles from `ansible/requirements.yml`
+6. Polls SSH port (up to 200s) until the VM is reachable
+7. Writes `ANSIBLE_SSH_PRIVATE_KEY` to `~/.ssh/id_rsa`
+8. Generates an inline inventory targeting the VM
+9. Runs `ansible/playbook.yml` (applies local roles and Galaxy roles)
 
 ---
 
 ## Terraform: Resource Model
 
-Each environment root module (`terraform/env/<env>/main.tf`) delegates all resource creation to the shared `lxd-vm` module:
+### Module Strategy
 
+Each environment root module (`terraform/env/<env>/main.tf`) calls the `lxd-vm` module. You choose which module source to use:
+
+**Default — Reusable module from `Infra/reusable-modules`:**
 ```hcl
 module "vm" {
-  source = "../../modules/lxd-vm"
+  source = "git::http://gitea.local/Infra/reusable-modules.git//modules/lxd-vm?ref=main"
 
   vm_name                = var.vm_name
   os_type                = var.os_type
@@ -282,7 +344,16 @@ module "vm" {
 }
 ```
 
-The `lxd-vm` module (`terraform/modules/lxd-vm/`) defines the `lxd_instance` resource, renders the cloud-init template, and exposes outputs (`vm_ip`, `vm_name`, `vm_mac_address`, `ansible_ssh_command`).
+**Local module — for customisation:**
+```hcl
+module "vm" {
+  source = "../../modules/lxd-vm"   # local path inside this repo
+
+  # same inputs as above
+}
+```
+
+Use the local module when you need to modify cloud-init behaviour, add new LXD device types, or iterate on the module without affecting other repos. Once stable, the changes can be promoted back to `reusable-modules`.
 
 ### VM Naming Convention
 
@@ -305,11 +376,11 @@ State is stored in MinIO at:
 s3://terraform-state/state/<environment>/<vm_name>/terraform.tfstate
 ```
 
-Each VM gets its own isolated state file. The S3 backend is declared empty in `backend.tf` and fully configured at `terraform init` time via `-backend-config` flags in the workflow.
+Each VM gets its own isolated state file.
 
 ### cloud-init
 
-The `cloud-init/user-data.yaml` template lives inside the `lxd-vm` module and is rendered by Terraform's `templatefile()`. It:
+The `cloud-init/user-data.yaml` template (in `lxd-vm` module) is rendered by Terraform's `templatefile()`. It:
 - Sets hostname to the full instance name
 - Configures DHCP on `enp5s0` via netplan
 - Creates an `ansible` user with SSH key auth and passwordless sudo
@@ -318,7 +389,7 @@ The `cloud-init/user-data.yaml` template lives inside the `lxd-vm` module and is
 
 ### tfvars Files
 
-Each VM has a dedicated `.tfvars` file under `terraform/env/<env>/`. Sensitive values (`lxd_address`, `ansible_ssh_public_key`) are **never** stored in tfvars — they are injected as `TF_VAR_*` environment variables from Gitea secrets.
+Each VM has a dedicated `.tfvars` file under `terraform/env/<env>/`. Sensitive values (`lxd_address`, `ansible_ssh_public_key`) are **never** stored in tfvars — they are injected as `TF_VAR_*` environment variables from OpenBao or Gitea secrets.
 
 Example (`dev01.tfvars`):
 ```hcl
@@ -335,6 +406,8 @@ memory_size  = "2GiB"
 
 ## Ansible: Playbook & Roles
 
+This repo uses a **hybrid role strategy**: a mix of **local roles** (version-controlled here) and **self-hosted Ansible Galaxy roles** (sourced from `gitea.local` at deploy time).
+
 ### Inventory
 
 `ansible/inventory.yml` is dynamic — the VM IP is passed in via the `VM_IP` environment variable set by the `ansible-deploy` workflow after reading Terraform output:
@@ -350,20 +423,47 @@ all:
 
 ### Playbook
 
-`ansible/playbook.yml` applies two roles in sequence:
+`ansible/playbook.yml` applies roles in sequence — local roles first, then Galaxy roles:
 
-| Role | Tags | What it does |
-|---|---|---|
-| `common` | `common` | Updates apt cache, installs base packages (curl, unzip, git, ca-certificates) |
-| `docker` | `docker` | Adds Docker upstream repo + GPG key, installs docker-ce, enables the daemon |
+| Role | Source | Tags | What it does |
+|---|---|---|---|
+| `common` | Local (`ansible/roles/common/`) | `common` | Updates apt cache, installs base packages |
+| `docker` | Local (`ansible/roles/docker/`) | `docker` | Docker CE from upstream repo, daemon enabled |
+| `curl` | Galaxy (`gitea.local/infra/reusable-ansible-galaxy-role-curl`) | `curl` | Installs curl, configurable via `curl_state` |
+| `vim` | Galaxy (`gitea.local/infra/reusable-ansible-galaxy-role-vim`) | `vim` | Installs vim, configurable via `vim_state` |
+| `htop` | Galaxy (`gitea.local/infra/reusable-ansible-galaxy-role-htop`) | `htop` | Installs htop, configurable via `htop_state` |
 
-### Roles
+### Galaxy Roles (`ansible/requirements.yml`)
 
-Both roles live locally under `ansible/roles/`. There is no external Galaxy dependency — all role tasks are self-contained.
+Galaxy roles are sourced from self-hosted Gitea repos. The `ansible-deploy` workflow (and `ansible-check`) runs `ansible-galaxy role install` before executing the playbook:
 
-**`common`** — idempotent base config, respects `cache_valid_time` to avoid redundant apt updates.
+```yaml
+# ansible/requirements.yml
+roles:
+  - name: curl
+    src: http://gitea.local/infra/reusable-ansible-galaxy-role-curl.git
+    scm: git
+    version: main
 
-**`docker`** — installs Docker CE from `download.docker.com`. Uses `args: creates:` on the GPG key conversion step to ensure idempotency.
+  - name: vim
+    src: http://gitea.local/infra/reusable-ansible-galaxy-role-vim.git
+    scm: git
+    version: main
+
+  - name: htop
+    src: http://gitea.local/infra/reusable-ansible-galaxy-role-htop.git
+    scm: git
+    version: main
+```
+
+Galaxy roles follow a standard structure (`tasks/main.yml`, `defaults/main.yml`, `meta/main.yml`) and expose configurable variables (e.g. `curl_state: absent` to uninstall). They are pinned to `main` — update `version:` to pin to a tag or commit for production stability.
+
+### Local Roles
+
+Local roles live under `ansible/roles/` and are not managed by Galaxy. Use local roles for:
+- Infrastructure concerns that are tightly coupled to this repo (e.g. Docker, base config)
+- Roles in active development before publishing to the self-hosted Galaxy server
+- Roles that should not be shared across repos
 
 ---
 
@@ -372,14 +472,15 @@ Both roles live locally under `ansible/roles/`. There is no external Galaxy depe
 ```
 1. Create / edit a .tfvars file under terraform/env/<env>/
 2. Open a PR → terraform-check + ansible-check run automatically
+   └─ Galaxy roles installed from gitea.local during ansible-check
 3. Merge to main
 4. Manually trigger terraform-plan  →  review output
 5. Manually trigger terraform-apply →  VM is created via LXD
-   └─ lxd-vm module provisions the lxd_instance resource
+   └─ lxd-vm module: reusable-modules (default) or local modules
    └─ cloud-init configures ansible user, SSH, base packages on first boot
 6. Manually trigger ansible-deploy  →  Ansible roles applied to the live VM
-   └─ common role: base packages
-   └─ docker role: Docker CE installed and started
+   └─ Galaxy roles installed: curl, vim, htop (from gitea.local Galaxy repos)
+   └─ Local roles: common (base packages), docker (Docker CE)
 ```
 
 ---
@@ -389,7 +490,6 @@ Both roles live locally under `ansible/roles/`. There is no external Galaxy depe
 ```bash
 # 1. Copy a tfvars example and fill in secrets locally
 cp terraform/env/dev/dev01.tfvars terraform/env/dev/dev02.tfvars
-# Add lxd_address and ansible_ssh_public_key as env vars
 
 # 2. Init with MinIO backend (from the env directory)
 cd terraform/env/dev
@@ -418,11 +518,14 @@ terraform apply -var-file="dev02.tfvars"
 # 5. Get SSH command
 terraform output ansible_ssh_command
 
-# 6. Run Ansible manually
+# 6. Install Galaxy roles locally
+ansible-galaxy role install -r ansible/requirements.yml
+
+# 7. Run Ansible manually
 VM_IP=$(terraform output -raw vm_ip)
 ansible-playbook -i "$VM_IP," \
   -u ansible \
-  --private-key ~/.ssh/id_ed25519 \
+  --private-key ~/.ssh/ansible_id_ed25519 \
   ../../../ansible/playbook.yml
 ```
 
@@ -442,24 +545,35 @@ terraform destroy -var-file="dev02.tfvars"
 
 ## Design Notes
 
-This repo represents a **module-based iteration** of the homelab CI/CD stack — balancing reusability with simplicity:
+This repo is the **client** of the homelab shared infrastructure stack. It calls shared components and avoids duplicating logic:
 
-- **Terraform `lxd-vm` module** — the LXD VM resource, cloud-init rendering, and outputs are encapsulated in `terraform/modules/lxd-vm/`. Each environment root module calls it with environment-specific inputs, keeping env configs thin and the VM logic in one place
-- **No shared/reusable workflows** — each workflow is self-contained in this repo, so no cross-repo dependency to debug
-- **No Ansible Galaxy** — roles are local, version-controlled here, no external registry required
+| Concern | Default | Local fallback |
+|---|---|---|
+| **Workflows** | `Infra/reusable-workflows-vault` (OpenBao secrets) | `Infra/reusable-workflows` (org secrets) |
+| **Terraform module** | `Infra/reusable-modules` via `git::http://` | `terraform/modules/lxd-vm/` (in-repo copy) |
+| **Ansible Galaxy roles** | Self-hosted Gitea Galaxy repos | `ansible/roles/` (local, in-repo) |
+| **Secrets** | OpenBao KV v2 (`homelab/data/*`) | Gitea org-level secrets |
 
-When ready to scale, the natural evolution paths are:
-- Host the `lxd-vm` module in a dedicated Gitea repo and reference it via `git::http://gitea.local/infra/terraform-lxd-vm.git`
-- Move common workflows to a `shared-workflows` Gitea repo and call them via `workflow_call`
-- Publish roles to a self-hosted Ansible Galaxy server and reference via `requirements.yml`
-- Replace Gitea org secrets with OpenBao for dynamic, short-lived credentials
+**When to use the local module instead of `reusable-modules`:**
+Switch `source` in `main.tf` from the Gitea `git::http://` reference to `../../modules/lxd-vm` when you need to customise cloud-init or add LXD-specific device config that shouldn't affect other repos. The local copy in `terraform/modules/lxd-vm/` is always kept in sync with `reusable-modules` as a starting point.
+
+**When to use local Ansible roles instead of Galaxy:**
+The `common` and `docker` roles are local because they're infra-lifecycle concerns (base OS setup, container runtime) that are closely tied to how this repo provisions VMs. Utility tool roles (curl, vim, htop) are better suited to Galaxy because they're stateless, independently testable, and reusable across many repos.
+
+**Natural evolution paths when ready to scale:**
+- Promote local roles to dedicated Galaxy repos under `Infra` org
+- Add a `staging` environment by duplicating `terraform/env/dev/` and adding `vault_path_*` inputs
+- Pin Galaxy role `version:` fields to git tags for production deployments
+- Replace AppRole auth with short-lived tokens from OpenBao's Kubernetes or JWT auth methods
 
 ---
-## 👨‍💻 Infrastructure Created and Maintained by
+## Infrastructure Created and Maintained By
 
 **Ali Ahmed**  
 Building infrastructure, automation, and DevOps workflows  
 
-[![GitHub](https://img.shields.io/badge/GitHub-aliahmed-black?style=for-the-badge&logo=github)](https://github.com/jeffreyalie)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-aliahmed-blue?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/ali-ahmed-261755252/)
+**Contact**
+
+[![GitHub](https://img.shields.io/badge/GitHub-%20ali%20ahmed-black?style=for-the-badge&logo=github)](https://github.com/jeffreyalie)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-%20ali%20ahmed-blue?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/ali-ahmed-261755252/)
 ---
