@@ -93,39 +93,39 @@ This repository implements a complete infrastructure-as-code solution that:
 
 ```
                 ┌─────────────────────────────────────────────┐
-                │           Gitea (gitea.local)                │
-                │   local-workflows-ansible-roles-modules      │
-                └───────────┬─────────────────────────────────┘
-                            │ Gitea Actions triggers
-                            ▼
-                ┌─────────────────────────┐
-                │     Gitea Act Runner    │  (Docker-based, inside LXD VM)
-                └───┬─────────┬───────────┘
-                    │         │
-                    │ calls   │ calls
-                    ▼         ▼
-  ┌──────────────────────────────────────────────────────────┐
-  │                  Shared Gitea Repos (Infra org)          │
-  │                                                          │
-  │  reusable-workflows-vault   ← Default  (OpenBao secrets) │
-  │  reusable-workflows         ← Alternate (org secrets)    │
-  │  reusable-modules           ← Terraform lxd-vm module    │
-  │  reusable-ansible-galaxy-*  ← Ansible Galaxy roles       │
-  └──────────────────────────────────────────────────────────┘
-                    │         │
-           Terraform│         │Ansible
-                    ▼         ▼
-      ┌─────────────────┐  ┌─────────────────┐
-      │   LXD / KVM     │  │   Target VM     │
-      │  (localhost:    │  │  (Ubuntu 24.04) │
-      │    8443)        │  │  ansible user   │
-      └─────────────────┘  └─────────────────┘
-              │
-      ┌───────────────┐    ┌───────────────┐
-      │     MinIO     │    │   OpenBao     │
-      │ 10.248.42.22  │    │  (secrets)    │
-      │ (TF state)    │    │               │
-      └───────────────┘    └───────────────┘
+                │           Gitea (gitea.local)               │
+                │   local-workflows-ansible-roles-modules     │
+                └─────────────────────┬───────────────────────┘
+                                      │ Gitea Actions triggers
+                                      ▼
+                        ┌─────────────────────────┐
+                        │     Gitea Act Runner    │  (Docker-based, inside LXD VM)
+                        └─────┬─────────┬─────────┘
+                              │         │
+                              │ calls   │ calls
+                              ▼         ▼
+          ┌──────────────────────────────────────────────────────────┐
+          │                  Shared Gitea Repos (Infra org)          │
+          │                                                          │
+          │  reusable-workflows-vault   ← Default  (OpenBao secrets) │
+          │  reusable-workflows         ← Alternate (org secrets)    │
+          │  reusable-modules           ← Terraform lxd-vm module    │
+          │  reusable-ansible-galaxy-*  ← Ansible Galaxy roles       │
+          └──────────────────────────────────────────────────────────┘
+                            │         │
+                   Terraform│         │Ansible
+                            ▼         ▼
+              ┌─────────────────┐  ┌─────────────────┐
+              │   LXD / KVM     │  │   Target VM     │
+              │  (localhost:    │  │  (Ubuntu 24.04) │
+              │    8443)        │  │  ansible user   │
+              └─────────────────┘  └─────────────────┘
+                      │                    │
+              ┌───────────────┐    ┌───────────────┐
+              │     MinIO     │    │   OpenBao     │
+              │ 10.248.42.22  │    │  (secrets)    │
+              │ (TF state)    │    │               │
+              └───────────────┘    └───────────────┘
 ```
 
 ---
