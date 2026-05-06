@@ -9,7 +9,7 @@ Deploy Ubuntu 24.04 virtual machines on LXD via Terraform (module-based), config
 - [Summary](#summary)
 - [Prerequisites](#prerequisites)
 - [Quick Steps to Deploy a VM](#quick-steps-to-deploy-a-vm)
-- [Architecture Overview](#architecture-overview)
+- [Architecture Overview](#architecture-overview---infrastrucutre---gha-workflow---secrets-workflow)
 - [Repository Structure](#repository-structure)
 - [Secrets & Variables](#secrets--variables)
 - [Workflows](#workflows)
@@ -89,20 +89,20 @@ This repository implements a complete infrastructure-as-code solution that:
 
 ---
 
-## Architecture Overview
+## Architecture Overview - (Infrastrucutre - GHA workflow - Secrets workflow)
 
 ```
                 ┌─────────────────────────────────────────────┐
-                │           Gitea (gitea.local)               │
+                │           Gitea (gitea.local)               │  (Org level secrets for OpenBao)
                 │   local-workflows-ansible-roles-modules     │
                 └─────────────────────┬───────────────────────┘
-                                      │ Gitea Actions triggers
-                                      ▼
-                        ┌─────────────────────────┐
-                        │     Gitea Act Runner    │  (Docker-based, inside LXD VM)
-                        └─────┬─────────┬─────────┘
-                              │         │
-                              │ calls   │ calls
+                                      │ Gitea Actions triggers                                              
+                                      ▼                                                     ┌───────────────┐ 
+                        ┌─────────────────────────┐                                         │    OpenBao    │ 
+                        │     Gitea Act Runner    │  (Docker-based, inside LXD VM) ─────────│   (secrets)   │ 
+                        └─────┬─────────┬─────────┘                                         │ For LXD /Minio│ 
+                              │         │                                                   └───────────────┘  
+                              │ calls   │ calls                                                   
                               ▼         ▼
           ┌──────────────────────────────────────────────────────────┐
           │                  Shared Gitea Repos (Infra org)          │
@@ -112,20 +112,22 @@ This repository implements a complete infrastructure-as-code solution that:
           │  reusable-modules           ← Terraform lxd-vm module    │
           │  reusable-ansible-galaxy-*  ← Ansible Galaxy roles       │
           └──────────────────────────────────────────────────────────┘
-                            │         │
-                   Terraform│         │Ansible
-                            ▼         ▼
-              ┌─────────────────┐  ┌─────────────────┐
-              │   LXD / KVM     │  │   Target VM     │
-              │  (localhost:    │  │  (Ubuntu 24.04) │
-              │    8443)        │  │  ansible user   │
-              └─────────────────┘  └─────────────────┘
-                      │                    │
-              ┌───────────────┐    ┌───────────────┐
-              │     MinIO     │    │   OpenBao     │
-              │ 10.248.42.22  │    │  (secrets)    │
-              │ (TF state)    │    │               │
-              └───────────────┘    └───────────────┘
+                       │                             │
+              Terraform│                             │Ansible
+                       ▼                             ▼
+              ┌─────────────────┐           ┌─────────────────┐
+              │      MinIO      │           │   Target VM     │
+              │    backend s3   │           │  (Ubuntu 24.04) │
+              │    (TF state)   │           │  ansible user   │
+              └─────────────────┘           └─────────────────┘
+                      │                    
+                      │ Creates VM
+                      │ 
+              ┌─────────────────┐ 
+              │   LXD / KVM     │ 
+              │  (localhost:    │ 
+              │    8443)        │ 
+              └─────────────────┘  
 ```
 
 ---
