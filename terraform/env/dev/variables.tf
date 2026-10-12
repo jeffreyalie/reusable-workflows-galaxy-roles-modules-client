@@ -32,7 +32,7 @@ variable "environment" {
 
 variable "image" {
   type    = string
-  default = "ubuntu-24-04-vm"
+  default = "ubuntu-26.4-vm"
 }
 
 variable "network" {
