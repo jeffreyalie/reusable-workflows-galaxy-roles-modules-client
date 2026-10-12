@@ -1,0 +1,16 @@
+# ansible/requirements.yml
+roles:
+  - name: curl
+    src: http://gitea.local/infra/reusable-ansible-galaxy-role-curl.git
+    scm: git
+    version: main
+
+  - name: vim
+    src: http://gitea.local/infra/reusable-ansible-galaxy-role-vim.git
+    scm: git
+    version: main
+
+  - name: htop
+    src: http://gitea.local/infra/reusable-ansible-galaxy-role-htop.git
+    scm: git
+    version: main
