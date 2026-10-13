@@ -4,22 +4,29 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment (dev/prod) — must match folder terraform/env/<env>"
-        required: true
-        type: string
-      vm_name:
-        description: "VM name (e.g. dev01) — must match <vm_name>.tfvars"
+        description: "Environment (e.g dev/prod ) must match folder name, e.g. terraform/env/dev or terraform/env/prod)"
         required: true
         type: string
 
+      vm_name:
+        description: "VM name ( e.g. dev01 / prod01 ) must match tfvars file, e.g. dev01.tfvars / prod01.tfvars"
+        required: true
+
 jobs:
   plan:
-    uses: Infra/reusable-workflows-vault/.gitea/workflows/reusable-terraform-plan.yml@main
+    uses: Infra/reusable-workflows/.gitea/workflows/reusable-terraform-plan.yml@main
     with:
-      environment:        ${{ github.event.inputs.environment }}
-      vm_name:            ${{ github.event.inputs.vm_name }}
-      vault_path_lxd:     "homelab/data/lxd"
-      vault_path_minio:   "homelab/data/minio"
-      vault_path_ansible: "homelab/data/ansible"
-    secrets: inherit
-    
+      environment: ${{ github.event.inputs.environment }}
+      vm_name: ${{ github.event.inputs.vm_name }}
+    secrets:
+      # MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+      # MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+      # MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      LXD_ADDRESS: ${{ secrets.LXD_ADDRESS }}
+      ANSIBLE_SSH_PUBLIC_KEY: ${{ secrets.ANSIBLE_SSH_PUBLIC_KEY }}
+      # LXD_TRUST_PASSWORD: ${{ secrets.LXD_TRUST_PASSWORD }} # -- enable if using password-based trust instead of client certs
+      LXD_CLIENT_CERT: ${{ secrets.LXD_CLIENT_CERT }} # -- disable if using password-based trust instead of client certs
+      LXD_CLIENT_KEY: ${{ secrets.LXD_CLIENT_KEY }} # -- disable if using password-based trust instead of client certs
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+      AWS_DEFAULT_REGION: us-east-1

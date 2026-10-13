@@ -6,6 +6,6 @@ on:
 
 jobs:
   check:
-    uses: Infra/reusable-workflows-vault/.gitea/workflows/reusable-terraform-check.yml@main
+    uses: Infra/reusable-workflows/.gitea/workflows/reusable-terraform-check.yml@main
     with:
       terraform_dir: "terraform"
