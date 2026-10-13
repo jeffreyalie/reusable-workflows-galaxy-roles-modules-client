@@ -14,7 +14,7 @@ on:
 
 jobs:
   plan:
-    uses: Infra/reusable-workflows/.admin/workflows/reusable-terraform-plan.yml@main
+    uses: admin/reusable-workflows/.gitea/workflows/reusable-terraform-plan.yml@main
     with:
       environment: ${{ github.event.inputs.environment }}
       vm_name: ${{ github.event.inputs.vm_name }}

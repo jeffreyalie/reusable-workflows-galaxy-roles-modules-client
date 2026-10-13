@@ -9,7 +9,7 @@ Deploy Ubuntu 24.04 virtual machines on LXD via Terraform (module-based), config
 - [Summary](#summary)
 - [Prerequisites](#prerequisites)
 - [Quick Steps to Deploy a VM](#quick-steps-to-deploy-a-vm)
-- [Architecture Overview](#architecture-overview---infrastrucutre---gha-workflow---secrets-workflow)
+- [Architecture Overview](#architecture-overview---adminstrucutre---gha-workflow---secrets-workflow)
 - [Repository Structure](#repository-structure)
 - [Secrets & Variables](#secrets--variables)
 - [Workflows](#workflows)
@@ -19,13 +19,13 @@ Deploy Ubuntu 24.04 virtual machines on LXD via Terraform (module-based), config
 - [Local Usage](#local-usage)
 - [Destroying a VM](#destroying-a-vm)
 - [Design Notes](#design-notes)
-- [Created and Maintained By](#infrastructure-created-and-maintained-by)
+- [Created and Maintained By](#adminstructure-created-and-maintained-by)
 
 ---
 
 ## Summary
 
-This repository implements a complete infrastructure-as-code solution that:
+This repository implements a complete adminstructure-as-code solution that:
 
 - Provisions Ubuntu 24.04 VMs on LXD using Terraform with a reusable `lxd-vm` module
 - Configures VMs with cloud-init for automated setup
@@ -37,14 +37,14 @@ This repository implements a complete infrastructure-as-code solution that:
 
 | Strategy | Repo | When to use |
 |---|---|---|
-| ✅ **Default** — OpenBao (Vault) | `Infra/reusable-workflows-vault` | Production-grade, dynamic short-lived secrets |
-| 🔁 **Alternate** — Repo-level secrets | `Infra/reusable-workflows` | Simpler setup, static secrets in Gitea org |
+| ✅ **Default** — OpenBao (Vault) | `admin/reusable-workflows-vault` | Production-grade, dynamic short-lived secrets |
+| 🔁 **Alternate** — Repo-level secrets | `admin/reusable-workflows` | Simpler setup, static secrets in Gitea org |
 
 **Two Terraform module strategies are supported:**
 
 | Strategy | Source | When to use |
 |---|---|---|
-| ✅ **Default** — Reusable module | `Infra/reusable-modules` on Gitea | Shared, version-controlled, consistent across repos |
+| ✅ **Default** — Reusable module | `admin/reusable-modules` on Gitea | Shared, version-controlled, consistent across repos |
 | 🔧 **Local** — In-repo module | `terraform/modules/lxd-vm/` | When you need to customise the module for this repo |
 
 ---
@@ -54,8 +54,8 @@ This repository implements a complete infrastructure-as-code solution that:
 | Requirement | Notes |
 |---|---|
 | Ubuntu 24.04 host | LXD installed via snap, API at `https://localhost:8443` |
-| Gitea | Running at `http://gitea.local`, `Infra` org |
-| Gitea Act Runner | Docker-based runner registered to the `Infra` org |
+| Gitea | Running at `http://gitea.local`, `admin` org |
+| Gitea Act Runner | Docker-based runner registered to the `admin` org |
 | MinIO | S3-compatible state backend at `http://10.248.42.22:9000` |
 | Terraform ≥ 1.5 | Installed on the runner |
 | LXD TLS certificates | Client cert/key for runner-to-LXD authentication |
@@ -68,7 +68,7 @@ This repository implements a complete infrastructure-as-code solution that:
 
 1. **Clone the repo and create a feature branch**
    ```bash
-   git clone http://gitea.local/infra/local-workflows-ansible-roles-modules.git
+   git clone http://gitea.local/admin/local-workflows-ansible-roles-modules.git
    cd local-workflows-ansible-roles-modules
    git checkout -b <env><vm_name>   # e.g. dev dev02
    ```
@@ -89,7 +89,7 @@ This repository implements a complete infrastructure-as-code solution that:
 
 ---
 
-## Architecture Overview - (Infrastrucutre - GHA workflow - Secrets workflow)
+## Architecture Overview - (adminstrucutre - GHA workflow - Secrets workflow)
 
 ```
                 ┌─────────────────────────────────────────────┐
@@ -105,7 +105,7 @@ This repository implements a complete infrastructure-as-code solution that:
                               │ calls   │ calls                                                   
                               ▼         ▼
           ┌──────────────────────────────────────────────────────────┐
-          │                  Shared Gitea Repos (Infra org)          │
+          │                  Shared Gitea Repos (admin org)          │
           │                                                          │
           │  reusable-workflows-vault   ← Default  (OpenBao secrets) │
           │  reusable-workflows         ← Alternate (org secrets)    │
@@ -183,11 +183,11 @@ This repository implements a complete infrastructure-as-code solution that:
 
 ## Secrets & Variables
 
-This repo supports two secret management strategies. The caller workflows in `.admin/workflows/` are pre-configured for the **default** (OpenBao/Vault) approach.
+This repo supports two secret management strategies. The caller workflows in `.gitea/workflows/` are pre-configured for the **default** (OpenBao/Vault) approach.
 
 ### Strategy 1 — OpenBao Vault ✅ Default
 
-Workflows call `Infra/reusable-workflows-vault` and exchange AppRole credentials for short-lived tokens at runtime. Only three secrets need to be set at the Gitea org level:
+Workflows call `admin/reusable-workflows-vault` and exchange AppRole credentials for short-lived tokens at runtime. Only three secrets need to be set at the Gitea org level:
 
 | Name | Type | Description |
 |---|---|---|
@@ -205,7 +205,7 @@ All other credentials (LXD certs, MinIO keys, SSH keys) are stored **inside Open
 
 ### Strategy 2 — Repo-level Secrets 🔁 Alternate
 
-Workflows call `Infra/reusable-workflows` and read secrets directly from Gitea. All secrets must be configured at the **Gitea org level**: `Infra` → Settings → Secrets and Variables.
+Workflows call `admin/reusable-workflows` and read secrets directly from Gitea. All secrets must be configured at the **Gitea org level**: `admin` → Settings → Secrets and Variables.
 
 | Name | Type | Used By | Description |
 |---|---|---|---|
@@ -221,17 +221,17 @@ Workflows call `Infra/reusable-workflows` and read secrets directly from Gitea. 
 To switch to this strategy, update the `uses:` line in each caller workflow:
 ```yaml
 # Default (OpenBao)
-uses: Infra/reusable-workflows-vault/.admin/workflows/reusable-terraform-plan.yml@main
+uses: admin/reusable-workflows-vault/.gitea/workflows/reusable-terraform-plan.yml@main
 
 # Alternate (repo secrets)
-uses: Infra/reusable-workflows/.admin/workflows/reusable-terraform-plan.yml@main
+uses: admin/reusable-workflows/.gitea/workflows/reusable-terraform-plan.yml@main
 ```
 
 ---
 
 ## Workflows
 
-All caller workflows live in `.admin/workflows/` and delegate to one of the two reusable workflow repos. The `with:` inputs and `vault_path_*` parameters are the same regardless of which strategy is used.
+All caller workflows live in `.gitea/workflows/` and delegate to one of the two reusable workflow repos. The `with:` inputs and `vault_path_*` parameters are the same regardless of which strategy is used.
 
 ### `terraform-check.yml` — Terraform Lint & Validate
 **Trigger:** Pull Request or `workflow_dispatch`
@@ -327,10 +327,10 @@ Steps:
 
 Each environment root module (`terraform/env/<env>/main.tf`) calls the `lxd-vm` module. You choose which module source to use:
 
-**Default — Reusable module from `Infra/reusable-modules`:**
+**Default — Reusable module from `admin/reusable-modules`:**
 ```hcl
 module "vm" {
-  source = "git::http://gitea.local/Infra/reusable-modules.git//modules/lxd-vm?ref=main"
+  source = "git::http://gitea.local/admin/reusable-modules.git//modules/lxd-vm?ref=main"
 
   vm_name                = var.vm_name
   os_type                = var.os_type
@@ -431,9 +431,9 @@ all:
 |---|---|---|---|
 | `common` | Local (`ansible/roles/common/`) | `common` | Updates apt cache, installs base packages |
 | `docker` | Local (`ansible/roles/docker/`) | `docker` | Docker CE from upstream repo, daemon enabled |
-| `curl` | Galaxy (`gitea.local/infra/reusable-ansible-galaxy-role-curl`) | `curl` | Installs curl, configurable via `curl_state` |
-| `vim` | Galaxy (`gitea.local/infra/reusable-ansible-galaxy-role-vim`) | `vim` | Installs vim, configurable via `vim_state` |
-| `htop` | Galaxy (`gitea.local/infra/reusable-ansible-galaxy-role-htop`) | `htop` | Installs htop, configurable via `htop_state` |
+| `curl` | Galaxy (`gitea.local/admin/reusable-ansible-galaxy-role-curl`) | `curl` | Installs curl, configurable via `curl_state` |
+| `vim` | Galaxy (`gitea.local/admin/reusable-ansible-galaxy-role-vim`) | `vim` | Installs vim, configurable via `vim_state` |
+| `htop` | Galaxy (`gitea.local/admin/reusable-ansible-galaxy-role-htop`) | `htop` | Installs htop, configurable via `htop_state` |
 
 ### Galaxy Roles (`ansible/requirements.yml`)
 
@@ -443,17 +443,17 @@ Galaxy roles are sourced from self-hosted Gitea repos. The `ansible-deploy` work
 # ansible/requirements.yml
 roles:
   - name: curl
-    src: http://gitea.local/infra/reusable-ansible-galaxy-role-curl.git
+    src: http://gitea.local/admin/reusable-ansible-galaxy-role-curl.git
     scm: git
     version: main
 
   - name: vim
-    src: http://gitea.local/infra/reusable-ansible-galaxy-role-vim.git
+    src: http://gitea.local/admin/reusable-ansible-galaxy-role-vim.git
     scm: git
     version: main
 
   - name: htop
-    src: http://gitea.local/infra/reusable-ansible-galaxy-role-htop.git
+    src: http://gitea.local/admin/reusable-ansible-galaxy-role-htop.git
     scm: git
     version: main
 ```
@@ -463,7 +463,7 @@ Galaxy roles follow a standard structure (`tasks/main.yml`, `defaults/main.yml`,
 ### Local Roles
 
 Local roles live under `ansible/roles/` and are not managed by Galaxy. Use local roles for:
-- Infrastructure concerns that are tightly coupled to this repo (e.g. Docker, base config)
+- adminstructure concerns that are tightly coupled to this repo (e.g. Docker, base config)
 - Roles in active development before publishing to the self-hosted Galaxy server
 - Roles that should not be shared across repos
 
@@ -547,12 +547,12 @@ terraform destroy -var-file="dev02.tfvars"
 
 ## Design Notes
 
-This repo is the **client** of the homelab shared infrastructure stack. It calls shared components and avoids duplicating logic:
+This repo is the **client** of the homelab shared adminstructure stack. It calls shared components and avoids duplicating logic:
 
 | Concern | Default | Local fallback |
 |---|---|---|
-| **Workflows** | `Infra/reusable-workflows-vault` (OpenBao secrets) | `Infra/reusable-workflows` (org secrets) |
-| **Terraform module** | `Infra/reusable-modules` via `git::http://` | `terraform/modules/lxd-vm/` (in-repo copy) |
+| **Workflows** | `admin/reusable-workflows-vault` (OpenBao secrets) | `admin/reusable-workflows` (org secrets) |
+| **Terraform module** | `admin/reusable-modules` via `git::http://` | `terraform/modules/lxd-vm/` (in-repo copy) |
 | **Ansible Galaxy roles** | Self-hosted Gitea Galaxy repos | `ansible/roles/` (local, in-repo) |
 | **Secrets** | OpenBao KV v2 (`homelab/data/*`) | Gitea org-level secrets |
 
@@ -560,19 +560,19 @@ This repo is the **client** of the homelab shared infrastructure stack. It calls
 Switch `source` in `main.tf` from the Gitea `git::http://` reference to `../../modules/lxd-vm` when you need to customise cloud-init or add LXD-specific device config that shouldn't affect other repos. The local copy in `terraform/modules/lxd-vm/` is always kept in sync with `reusable-modules` as a starting point.
 
 **When to use local Ansible roles instead of Galaxy:**
-The `common` and `docker` roles are local because they're infra-lifecycle concerns (base OS setup, container runtime) that are closely tied to how this repo provisions VMs. Utility tool roles (curl, vim, htop) are better suited to Galaxy because they're stateless, independently testable, and reusable across many repos.
+The `common` and `docker` roles are local because they're admin-lifecycle concerns (base OS setup, container runtime) that are closely tied to how this repo provisions VMs. Utility tool roles (curl, vim, htop) are better suited to Galaxy because they're stateless, independently testable, and reusable across many repos.
 
 **Natural evolution paths when ready to scale:**
-- Promote local roles to dedicated Galaxy repos under `Infra` org
+- Promote local roles to dedicated Galaxy repos under `admin` org
 - Add a `staging` environment by duplicating `terraform/env/dev/` and adding `vault_path_*` inputs
 - Pin Galaxy role `version:` fields to git tags for production deployments
 - Replace AppRole auth with short-lived tokens from OpenBao's Kubernetes or JWT auth methods
 
 ---
-## Infrastructure Created and Maintained By
+## adminstructure Created and Maintained By
 
 **Ali Ahmed**  
-Building infrastructure, automation, and DevOps workflows  
+Building adminstructure, automation, and DevOps workflows  
 
 **Contact**
 
