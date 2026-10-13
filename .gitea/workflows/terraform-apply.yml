@@ -14,7 +14,7 @@ on:
 
 jobs:
   apply:
-    uses: Infra/reusable-workflows/.gitea/workflows/reusable-terraform-apply.yml@main
+    uses: Infra/reusable-workflows/.admin/workflows/reusable-terraform-apply.yml@main
     with:
       environment: ${{ github.event.inputs.environment }}
       vm_name: ${{ github.event.inputs.vm_name }}

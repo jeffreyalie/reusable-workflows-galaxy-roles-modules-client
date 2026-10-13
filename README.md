@@ -183,7 +183,7 @@ This repository implements a complete infrastructure-as-code solution that:
 
 ## Secrets & Variables
 
-This repo supports two secret management strategies. The caller workflows in `.gitea/workflows/` are pre-configured for the **default** (OpenBao/Vault) approach.
+This repo supports two secret management strategies. The caller workflows in `.admin/workflows/` are pre-configured for the **default** (OpenBao/Vault) approach.
 
 ### Strategy 1 — OpenBao Vault ✅ Default
 
@@ -221,17 +221,17 @@ Workflows call `Infra/reusable-workflows` and read secrets directly from Gitea. 
 To switch to this strategy, update the `uses:` line in each caller workflow:
 ```yaml
 # Default (OpenBao)
-uses: Infra/reusable-workflows-vault/.gitea/workflows/reusable-terraform-plan.yml@main
+uses: Infra/reusable-workflows-vault/.admin/workflows/reusable-terraform-plan.yml@main
 
 # Alternate (repo secrets)
-uses: Infra/reusable-workflows/.gitea/workflows/reusable-terraform-plan.yml@main
+uses: Infra/reusable-workflows/.admin/workflows/reusable-terraform-plan.yml@main
 ```
 
 ---
 
 ## Workflows
 
-All caller workflows live in `.gitea/workflows/` and delegate to one of the two reusable workflow repos. The `with:` inputs and `vault_path_*` parameters are the same regardless of which strategy is used.
+All caller workflows live in `.admin/workflows/` and delegate to one of the two reusable workflow repos. The `with:` inputs and `vault_path_*` parameters are the same regardless of which strategy is used.
 
 ### `terraform-check.yml` — Terraform Lint & Validate
 **Trigger:** Pull Request or `workflow_dispatch`

@@ -6,7 +6,7 @@ on:
 
 jobs:
   check:
-    uses: Infra/reusable-workflows/.gitea/workflows/reusable-ansible-check.yml@main
+    uses: Infra/reusable-workflows/.admin/workflows/reusable-ansible-check.yml@main
     with:
       ansible_playbook_path: "ansible/playbook.yml"
             

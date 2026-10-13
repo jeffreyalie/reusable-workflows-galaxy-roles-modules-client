@@ -13,7 +13,7 @@ on:
 
 jobs:
   deploy:
-    uses: Infra/reusable-workflows/.gitea/workflows/reusable-ansible-deploy.yml@main
+    uses: Infra/reusable-workflows/.admin/workflows/reusable-ansible-deploy.yml@main
     with:
       environment: ${{ github.event.inputs.environment }}
       vm_name: ${{ github.event.inputs.vm_name }}
