@@ -1,6 +1,6 @@
 module "vm" {
-  # source = "../../modules/lxd-vm" # -- using local path for development/testing
-  source = "git::http://gitea.local/admin/reusable-modules.git//modules/lxd-vm?ref=main"
+  source = "../../modules/lxd-vm" # -- using local path for development/testing
+  #source = "git::http://gitea.local/admin/reusable-modules.git//modules/lxd-vm?ref=main"
 
   vm_name                = var.vm_name
   os_type                = var.os_type
