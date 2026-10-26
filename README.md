@@ -89,47 +89,64 @@ This repository implements a complete adminstructure-as-code solution that:
 
 ---
 
-## Architecture Overview - (adminstrucutre - GHA workflow - Secrets workflow)
+# VM deployment architecture - terraform - ansible - GHA runner - seaweed (S3) - openbao (vault)
+---
+```
+ Developer / GitHub Actions Runner
+ ----main commands----
+ terraform plan / apply
+ ansible-playbook
+ ---------------------
+
+
+ Gitea / Developer
+ ┌─────────────────────────────────────────┐
+ │  Terraform, ansible                     │ ----------------------------(Org level secrets for openbao only)
+ |  GHA workflows, roles                   │                      (VAULT_ADDR, VAULT_ROLE_ID, VAULT_SECRET_ID)
+ └─────────────────┬───────────────────────┘
+                   │
+                   |
+                   |
+                   ▼
+ ┌───────────────────────────────────────────┐
+ │        Runner / Developer                 │  ----------------------- (Runner picks secrets from Openbao )
+ |                                           |                                  homelab/data/lxd
+ |       (Docker-based, LXD VM)              |                                  homelab/data/seaweed	
+ |                                           |                                  homelab/data/ansible
+ |                                           |                             
+ |                                           |                            (Developer picks from env variables)
+ |                                           |
+ └───────┬───────────────────────────┬───────┘
+         │                           │
+         |                           |
+         |                           |
+Terraform│ plan / apply              │Ansible-playbook
+         |                           |
+         |                           |       
+         ▼                           |
+ ┌─────────────────┐                 |               
+ │      MinIO      │                 |
+ │    backend s3   │                 |
+ │    (TF state)   │                 |
+ └─────────────────┘                 |
+         │                           |      
+         │                           |
+         │                           |
+ ┌─────────────────┐                 |               
+ │   LXD / KVM     │                 |
+ │  (localhost:    │                 |       
+ │    8443)        │                 |      
+ └─────────────────┘                 |
+         |                           |
+         |                           |
+         |                           |
+ ┌─────────────────┐                 |       
+ │  Target VM      │                 |      
+ │  Ubuntu 26.04   │ +---------------+                   
+ │With ansible user|
+ └─────────────────┘
 
 ```
-                ┌─────────────────────────────────────────────┐
-                │           Gitea (gitea.local)               │  (Org level secrets for OpenBao)
-                │   local-workflows-ansible-roles-modules     │
-                └─────────────────────┬───────────────────────┘
-                                      │ Gitea Actions triggers                                              
-                                      ▼                                                     ┌───────────────┐ 
-                        ┌─────────────────────────┐                                         │    OpenBao    │ 
-                        │     Gitea Act Runner    │  (Docker-based, inside LXD VM) ─────────│   (secrets)   │ 
-                        └─────┬─────────┬─────────┘                                         │ For LXD /Minio│ 
-                              │         │                                                   └───────────────┘  
-                              │ calls   │ calls                                                   
-                              ▼         ▼
-          ┌──────────────────────────────────────────────────────────┐
-          │                  Shared Gitea Repos (admin org)          │
-          │                                                          │
-          │  reusable-workflows-vault   ← Default  (OpenBao secrets) │
-          │  reusable-workflows         ← Alternate (org secrets)    │
-          │  reusable-modules           ← Terraform lxd-vm module    │
-          │  reusable-ansible-galaxy-*  ← Ansible Galaxy roles       │
-          └──────────────────────────────────────────────────────────┘
-                       │                             │
-              Terraform│                             │Ansible
-                       ▼                             ▼
-              ┌─────────────────┐           ┌─────────────────┐
-              │      MinIO      │           │   Target VM     │
-              │    backend s3   │           │  (Ubuntu 24.04) │
-              │    (TF state)   │           │  ansible user   │
-              └─────────────────┘           └─────────────────┘
-                      │                    
-                      │ Creates VM
-                      │ 
-              ┌─────────────────┐ 
-              │   LXD / KVM     │ 
-              │  (localhost:    │ 
-              │    8443)        │ 
-              └─────────────────┘  
-```
-
 ---
 
 ## Repository Structure
