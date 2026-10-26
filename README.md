@@ -89,7 +89,7 @@ This repository implements a complete adminstructure-as-code solution that:
 
 ---
 
-# VM deployment architecture - terraform - ansible - GHA runner - seaweed (S3) - openbao (vault)
+# VM deployment architecture - terraform - ansible - GHA runner - seaweed (S3) - openbao (vault) - vault level secreats
 ---
 ```
  Developer / GitHub Actions Runner
