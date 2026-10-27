@@ -30,7 +30,7 @@ This repository implements a complete adminstructure-as-code solution that:
 - Provisions Ubuntu 24.04 VMs on LXD using Terraform with a reusable `lxd-vm` module
 - Configures VMs with cloud-init for automated setup
 - Deploys applications via Ansible playbooks — supporting both **local roles** and **self-hosted Ansible Galaxy roles**
-- Manages environments (dev/prod) with separate state management per VM in MinIO
+- Manages environments (dev/prod) with separate state management per VM in Seaweed
 - Provides CI/CD automation through Gitea Actions workflows, calling **shared reusable workflows**
 
 **Two reusable GHA workflow are supported:**
@@ -71,7 +71,7 @@ This repository implements a complete adminstructure-as-code solution that:
 ├── terraform/
 │   ├── env/
 │   │   ├── dev/
-│   │   │   ├── backend.tf              # S3 (MinIO) backend — empty config, filled at init
+│   │   │   ├── backend.tf              # S3 (seaweed) backend — empty config, filled at init
 │   │   │   ├── providers.tf            # LXD provider + Terraform version constraints
 │   │   │   ├── main.tf                 # Calls reusable-modules (default) or local module
 │   │   │   ├── variables.tf            # All input variables for this environment
@@ -236,11 +236,11 @@ Terraform│ plan / apply              │Ansible-playbook
 | Ubuntu 24.04 host | LXD installed via snap, API at `https://localhost:8443` |
 | Gitea | Running at `http://gitea.local`, `admin` org |
 | Gitea Act Runner | Docker-based runner registered to the `admin` org |
-| MinIO | S3-compatible state backend at `http://10.248.42.22:9000` |
+| Seaweed | S3-compatible state backend at `http://10.248.42.22:9000` |
 | Terraform ≥ 1.5 | Installed on the runner |
 | LXD TLS certificates | Client cert/key for runner-to-LXD authentication |
 | **OpenBao** *(default)* | Vault-compatible secrets manager — org secrets `VAULT_ADDR`, `VAULT_ROLE_ID`, `VAULT_SECRET_ID` configured |
-| **Gitea org secrets** *(alternate)* | `LXD_ADDRESS`, `LXD_CLIENT_CERT/KEY`, `MINIO_*`, `ANSIBLE_SSH_*` set at org level |
+| **Gitea org secrets** *(alternate)* | `LXD_ADDRESS`, `LXD_CLIENT_CERT/KEY`, `S3_*`, `ANSIBLE_SSH_*` set at org level |
 
 ---
 
@@ -283,12 +283,12 @@ Workflows call `admin/reusable-workflows-vault` and exchange AppRole credentials
 | `VAULT_ROLE_ID` | Secret | AppRole Role ID for CI login |
 | `VAULT_SECRET_ID` | Secret | AppRole Secret ID for CI login |
 
-All other credentials (LXD certs, MinIO keys, SSH keys) are stored **inside OpenBao** at the following KV v2 paths, and fetched at runtime by the reusable workflow:
+All other credentials (LXD certs, Seaweed keys, SSH keys) are stored **inside OpenBao** at the following KV v2 paths, and fetched at runtime by the reusable workflow:
 
 | Path | Keys stored |
 |---|---|
 | `homelab/data/lxd` | `address`, `client_cert`, `client_key`, `trust_password` |
-| `homelab/data/minio` | `endpoint`, `access_key`, `secret_key` |
+| `homelab/data/seaweed` | `endpoint`, `access_key`, `secret_key` |
 | `homelab/data/ansible` | `ssh_public_key`, `ssh_private_key` |
 
 ### Strategy 2 — Repo-level Secrets 🔁 Alternate
@@ -300,9 +300,9 @@ Workflows call `admin/reusable-workflows` and read secrets directly from Gitea. 
 | `LXD_ADDRESS` | Secret | Terraform | LXD API host (e.g. `192.168.x.x`) |
 | `LXD_CLIENT_CERT` | Secret | Terraform | TLS client certificate (PEM) |
 | `LXD_CLIENT_KEY` | Secret | Terraform | TLS client key (PEM) |
-| `MINIO_ENDPOINT` | Secret | Terraform | MinIO S3 API URL |
-| `MINIO_ACCESS_KEY` | Secret | Terraform | MinIO access key |
-| `MINIO_SECRET_KEY` | Secret | Terraform | MinIO secret key |
+| `S3_ENDPOINT` | Secret | Terraform | Seaweed S3 API URL |
+| `S3_ACCESS_KEY` | Secret | Terraform | Seaweed access key |
+| `S3_SECRET_KEY` | Secret | Terraform | Seaweed secret key |
 | `ANSIBLE_SSH_PUBLIC_KEY` | Secret | Terraform | Injected into VM via cloud-init |
 | `ANSIBLE_SSH_PRIVATE_KEY` | Secret | Ansible | Used by runner to SSH into VM |
 
@@ -348,7 +348,7 @@ Steps:
 2. Fetches secrets from OpenBao *(default)* or reads from Gitea org secrets *(alternate)*
 3. Resolves `tfvars_file` and `state_key` paths from inputs
 4. Writes LXD TLS certs to `~/.config/lxc/`
-5. `terraform init` against MinIO backend, working in `terraform/env/<env>/`
+5. `terraform init` against Seaweed backend, working in `terraform/env/<env>/`
 6. `terraform validate`
 7. `terraform plan` with the resolved `.tfvars` file
 
@@ -399,7 +399,7 @@ Inputs:
 Steps:
 1. Validates environment
 2. Fetches secrets from OpenBao *(default)* or org secrets *(alternate)*
-3. Inits Terraform against MinIO to read existing state
+3. Inits Terraform against Seaweed to read existing state
 4. Reads VM IP from `terraform output -raw vm_ip`
 5. Installs Galaxy roles from `ansible/requirements.yml`
 6. Polls SSH port (up to 200s) until the VM is reachable
@@ -461,7 +461,7 @@ Examples:
 
 ### State Backend Path
 
-State is stored in MinIO at:
+State is stored in Seaweed at:
 ```
 s3://terraform-state/state/<environment>/<vm_name>/terraform.tfstate
 ```
@@ -581,7 +581,7 @@ Local roles live under `ansible/roles/` and are not managed by Galaxy. Use local
 # 1. Copy a tfvars example and fill in secrets locally
 cp terraform/env/dev/dev01.tfvars terraform/env/dev/dev02.tfvars
 
-# 2. Init with MinIO backend (from the env directory)
+# 2. Init with Seaweed backend (from the env directory)
 cd terraform/env/dev
 terraform init \
   -backend-config="endpoint=http://10.248.42.22:9000" \
@@ -600,6 +600,9 @@ export TF_VAR_lxd_address="<lxd-host-ip>"
 export TF_VAR_ansible_ssh_public_key="ssh-ed25519 AAAA..."
 export TF_VAR_environment="dev"
 export TF_VAR_vm_name="dev02"
+export AWS_ACCESS_KEY_ID: S3_ACCESS_KEY value
+export AWS_SECRET_ACCESS_KEY: S3_SECRET_KEY value
+export AWS_DEFAULT_REGION: us-east-1
 
 # 4. Plan and apply
 terraform plan -var-file="dev02.tfvars"
