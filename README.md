@@ -6,20 +6,24 @@ Deploy Ubuntu 24.04 virtual machines on LXD via Terraform (module-based), config
 
 ## Table of Contents
 
-- [Summary](#summary)
-- [Prerequisites](#prerequisites)
-- [Quick Steps to Deploy a VM](#quick-steps-to-deploy-a-vm)
-- [Architecture Overview](#architecture-overview---adminstrucutre---gha-workflow---secrets-workflow)
-- [Repository Structure](#repository-structure)
-- [Secrets & Variables](#secrets--variables)
-- [Workflows](#workflows)
-- [Terraform: Resource Model](#terraform-resource-model)
-- [Ansible: Playbook & Roles](#ansible-playbook--roles)
-- [End-to-End Deployment Flow](#end-to-end-deployment-flow)
-- [Local Usage](#local-usage)
-- [Destroying a VM](#destroying-a-vm)
-- [Design Notes](#design-notes)
-- [Created and Maintained By](#adminstructure-created-and-maintained-by)
+Overview
+* [Summary](#summary)
+* [Folder Structure](#folder-structure)
+* [Infrastructure Archtecture - GHA - terraform - ansible - LXD - seaweed (S3) - Org level secrets](#infrastructure-archtecture---gha---terraform---ansible---lxd---seaweed-s3---org-level-secrets)
+* [Infrastructure Archtecture - GHA - terraform - ansible - LXD - seaweed (S3) - openbao (vault)](#infrastructure-archtecture---gha---terraform---ansible---lxd---seaweed-s3---openbao-vault)
+
+Details
+* [Prerequisites](#prerequisites)
+* [Quick Steps to Deploy a VM](#quick-steps-to-deploy-a-vm)
+* [Secrets & Variables](#secrets--variables)
+* [Workflows](#workflows)
+* [Terraform: Resource Model](#terraform-resource-model)
+* [Ansible: Playbook & Roles](#ansible-playbook--roles)
+* [End-to-End Deployment Flow](#end-to-end-deployment-flow)
+* [Local Usage](#local-usage)
+* [Destroying a VM](#destroying-a-vm)
+* [Design Notes](#design-notes)
+* [Created and Maintained By](#adminstructure-created-and-maintained-by)
 
 ---
 
