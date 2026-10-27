@@ -103,7 +103,7 @@ This repository implements a complete adminstructure-as-code solution that:
 └── .gitignore
 ```
 
-## Infrastructure Archtecture - GHA - terraform - ansible - LXD - seaweed (S3) - Org level secrets
+### Infrastructure Archtecture - GHA - terraform - ansible - LXD - seaweed (S3) - Org level secrets
 
 ```
  Developer / GitHub Actions Runner
